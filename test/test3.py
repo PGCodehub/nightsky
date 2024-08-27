@@ -1,20 +1,23 @@
+import openai
+import json
+from typing import Any, Dict, List, Optional, Tuple
+from pydantic import BaseModel, Field
+import os
+
 import os
 import sys
 sys.path.append('/root/nightsky/NightSky')
 
-
 from AgentGraph import AgenticGraph , MessageDict , StartNode , EndNode
 from typing import Any, Callable, Dict, List, Optional, Union, TypedDict, Tuple, Type, TypeVar
 from pydantic import BaseModel, Field
+import json
 
-
-import openai
-from typing import Any, Dict, List, Optional, Tuple
-from pydantic import BaseModel, Field
-import os
-# Set up OpenAI client
+# # Set up OpenAI client
+openapi_key = "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"
 
 client = openai.OpenAI(api_key=openapi_key)
+
 
 class ProductAnalysis(BaseModel):
     product_name: str
@@ -31,21 +34,23 @@ class WorkflowState(BaseModel):
     analyses: List[ProductAnalysis] = Field(default_factory=list)
     strategies: List[MarketingStrategy] = Field(default_factory=list)
 
-# Define agent functions
-def market_analyst(graph_data: Dict[str, Any], agentic_memory: List[Dict[str, Any]]) -> Dict[str, Any]:
-    state = WorkflowState(**graph_data)
+# Updated agent functions
+def market_analyst(input_data: Dict[str, Any], agentic_memory: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # Get the state from the input data
     
+    state = WorkflowState(**(input_data.get('Start', {})))
+
     system_prompt = """As the Lead Market Analyst at a premier digital marketing firm, you specialize in dissecting online business landscapes. Your goal:
     Conduct amazing analysis of the products and competitors, providing in-depth
     insights to guide marketing strategies. Include market size and target audience in your analysis."""
 
     # Use agentic memory to provide context
     context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in agentic_memory[-5:]])
-    
+
     for product in state.products:
         # Check if analysis for this product already exists in memory
         existing_analysis = next((msg for msg in reversed(agentic_memory) if msg['role'] == 'assistant' and product in msg['content']), None)
-        
+
         if existing_analysis:
             print(f"Using existing analysis for {product}")
             analysis = existing_analysis['content']
@@ -64,7 +69,7 @@ def market_analyst(graph_data: Dict[str, Any], agentic_memory: List[Dict[str, An
         # For simplicity, we're using placeholder logic here. In a real scenario, you'd want to parse the analysis text.
         market_size = "Large" if "large market" in analysis.lower() else "Small"
         target_audience = "General consumers" if "general" in analysis.lower() else "Niche market"
-        
+
         state.analyses.append(ProductAnalysis(
             product_name=product,
             analysis=analysis,
@@ -79,12 +84,13 @@ def market_analyst(graph_data: Dict[str, Any], agentic_memory: List[Dict[str, An
         create_agent_msg=True,
         tool_call=False
     )
-    
+
     return {"graph_data": state.dict(), "metahistory": metahistory.dict()}
 
-def marketing_strategist(graph_data: Dict[str, Any], agentic_memory: List[Dict[str, Any]]) -> Dict[str, Any]:
-    state = WorkflowState(**graph_data)
-    
+def marketing_strategist(input_data: Dict[str, Any], agentic_memory: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # Get the state from the input data
+    state = WorkflowState(**(input_data.get('MarketAnalyst', {})))
+
     system_prompt = """You are the Chief Marketing Strategist at a leading digital marketing agency, known for crafting bespoke strategies that drive success. Your goal:
     Synthesize amazing insights from product analysis to formulate incredible
     marketing strategies."""
@@ -95,7 +101,7 @@ def marketing_strategist(graph_data: Dict[str, Any], agentic_memory: List[Dict[s
     for analysis in state.analyses:
         # Check if strategy for this product already exists in memory
         existing_strategy = next((msg for msg in reversed(agentic_memory) if msg['role'] == 'assistant' and analysis.product_name in msg['content']), None)
-        
+
         if existing_strategy:
             print(f"Using existing strategy for {analysis.product_name}")
             strategy = existing_strategy['content']
@@ -119,12 +125,13 @@ def marketing_strategist(graph_data: Dict[str, Any], agentic_memory: List[Dict[s
         create_agent_msg=True,
         tool_call=False
     )
-    
+
     return {"graph_data": state.dict(), "metahistory": metahistory.dict()}
 
-def niche_market_specialist(graph_data: Dict[str, Any], agentic_memory: List[Dict[str, Any]]) -> Dict[str, Any]:
-    state = WorkflowState(**graph_data)
-    
+def niche_market_specialist(input_data: Dict[str, Any], agentic_memory: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # Get the state from the input data
+    state = WorkflowState(**(input_data.get('MarketingStrategist', {})))
+
     system_prompt = """As a Niche Market Specialist, your expertise lies in tailoring strategies for products with smaller, highly specific target audiences. Your goal:
     Refine the existing marketing strategies to better suit niche markets and specialized consumer groups."""
 
@@ -135,7 +142,7 @@ def niche_market_specialist(graph_data: Dict[str, Any], agentic_memory: List[Dic
         if analysis.market_size == "Small" and "niche" in analysis.target_audience.lower():
             # Check if refined strategy for this product already exists in memory
             existing_refined_strategy = next((msg for msg in reversed(agentic_memory) if msg['role'] == 'assistant' and f"Refined strategy for {analysis.product_name}" in msg['content']), None)
-            
+
             if existing_refined_strategy:
                 print(f"Using existing refined strategy for {analysis.product_name}")
                 refined_strategy = existing_refined_strategy['content']
@@ -159,29 +166,40 @@ def niche_market_specialist(graph_data: Dict[str, Any], agentic_memory: List[Dic
         create_agent_msg=True,
         tool_call=False
     )
-    
+
     return {"graph_data": state.dict(), "metahistory": metahistory.dict()}
 
-# Conditional function for branching
-def is_niche_market(graph_data: Dict[str, Any]) -> bool:
-    state = WorkflowState(**graph_data)
-    return any(analysis.market_size == "Small" and "niche" in analysis.target_audience.lower() for analysis in state.analyses)
+# Updated conditional function for branching
+def is_niche_market(graph_data: Dict[str, Dict[str, Any]]) -> bool:
+    # The graph_data now contains a single key (the node name) with the node's state as the value
+    node_name = next(iter(graph_data))  # Get the only key in the dictionary
+    node_state = graph_data[node_name]
+    
+    if not isinstance(node_state, dict):
+        return False  # If the state is not a dictionary, we can't process it
+    
+    state = WorkflowState(**node_state)
+    #return any(analysis.market_size == "Small" and "niche" in analysis.target_audience.lower() for analysis in state.analyses)
+
+    return True
 
 # Test function
 def test_marketing_workflow():
-    initial_state = WorkflowState(products=["Smartphone", "Custom Mechanical Keyboard", "Smart Watch"])
-    
+    initial_state = WorkflowState(products=["Smartphone", "Smart Watch"])
+
     graph = AgenticGraph(initial_state.dict(), chat_id="marketing_workflow")
-    
+
+    # Add nodes
     graph.add_node(StartNode())
     graph.add_node("MarketAnalyst", market_analyst, is_agent=True)
     graph.add_node("MarketingStrategist", marketing_strategist, is_agent=True)
     graph.add_node("NicheMarketSpecialist", niche_market_specialist, is_agent=True)
     graph.add_node(EndNode())
 
+    # Add edges
     graph.add_edge("Start", "MarketAnalyst")
     graph.add_edge("MarketAnalyst", "MarketingStrategist")
-    
+
     # Add branching edge
     graph.add_branching_edge(
         "MarketingStrategist",
@@ -193,43 +211,60 @@ def test_marketing_workflow():
     )
     graph.add_edge("NicheMarketSpecialist", "End")
 
+    print("Graph structure and dependencies:")
+    for node_id, node in graph.nodes.items():
+        print(f"Node: {node_id}")
+        previous_nodes = graph.get_previous_nodes(node)
+        print(f"  Previous nodes: {[prev.name for prev in previous_nodes]}")
+        required_deps = graph.required_dependencies.get(node_id, set())
+        print(f"  Required dependencies: {required_deps}")
+
     print("Executing the marketing workflow...")
     graph.execute()
 
-    final_state = WorkflowState(**graph.get_graph_data())
-    print("\nFinal Workflow State:")
-    print(f"Products analyzed: {len(final_state.products)}")
-    print(f"Analyses created: {len(final_state.analyses)}")
-    print(f"Strategies developed: {len(final_state.strategies)}")
+    # Test graph visualization
+    # graph.save_graph_visualization("marketing_workflow_graph.png")
 
-    print("\nDetailed Results:")
-    for product, analysis, strategy in zip(final_state.products, final_state.analyses, final_state.strategies):
-        print(f"\nProduct: {product}")
-        print(f"Market Size: {analysis.market_size}")
-        print(f"Target Audience: {analysis.target_audience}")
-        print(f"Analysis summary: {analysis.analysis[:100]}...")
-        print(f"Strategy summary: {strategy.strategy[:100]}...")
+    # Test getting execution data
+    execution_id = graph.get_execution_ids()[-1]
+    execution_data = graph.get_execution_data(execution_id)
+    print("\nExecution Data:")
+    print(f"Metahistory entries: {len(execution_data['metahistory'][1])}")
+    print(f"Agentic memory entries: {sum(len(mem) for mem in execution_data['agentic_memory'].values())}")
+    print(f"Node graph state entries: {len(execution_data['node_graph_state'])}")
 
-    print("\nAgent Memories:")
-    for agent_id in graph.agent_ids:
-        print(f"\nAgent {agent_id}:")
-        for message in graph.get_agentic_memory(agent_id):
-            print(f"- {message['role']}: {message['content'][:50]}...")
+    # Test stopping and resuming execution
+    # print("\nTesting stop and resume functionality...")
+    # graph.stop_at_current_node()
+    # current_node = graph.get_current_node()
+    # print(f"Stopped at node: {current_node.name if current_node else 'None'}")
+    # graph.resume_execution()
+    # graph.execute()  # Continue execution
 
-    # Run the workflow again to demonstrate memory usage
-    print("\nRunning the workflow again to demonstrate memory usage...")
-    graph.execute()
+    # Print final results
+    # final_state = WorkflowState(**graph.get_graph_data())
+    # print("\nFinal Workflow State:")
+    # print(f"Products analyzed: {len(final_state.products)}")
+    # print(f"Analyses created: {len(final_state.analyses)}")
+    # print(f"Strategies developed: {len(final_state.strategies)}")
 
-    # Print updated agent memories
-    print("\nUpdated Agent Memories after second run:")
-    for agent_id in graph.agent_ids:
-        print(f"\nAgent {agent_id}:")
-        for message in graph.get_agentic_memory(agent_id):
-            print(f"- {message['role']}: {message['content'][:50]}...")
+    # # Print agent memories
+    # print("\nAgent Memories:")
+    # for agent_id in graph.agent_ids:
+    #     print(f"\nAgent {agent_id}:")
+    #     for message in graph.get_agentic_memory(agent_id):
+    #         print(f"- {message['role']}: {message['content'][:50]}...")
 
+    # # Test multiple executions
+    # print("\nRunning the workflow again to demonstrate memory usage...")
+    # graph.execute()
 
+    # # Print updated agent memories
+    # print("\nUpdated Agent Memories after second run:")
+    # for agent_id in graph.agent_ids:
+    #     print(f"\nAgent {agent_id}:")
+    #     for message in graph.get_agentic_memory(agent_id):
+    #         print(f"- {message['role']}: {message['content'][:50]}...")
 
 if __name__ == "__main__":
     test_marketing_workflow()
-
-
