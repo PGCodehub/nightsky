@@ -16,7 +16,7 @@ class AgentSchema(BaseModel):
 class MessageDict(BaseModel):
     role: str
     content: str
-    tool_call: bool
+    tool_call: bool 
     tool_args: Optional[Dict[str, Any]] = None
     result: Any
     create_agent_msg: bool
@@ -119,8 +119,8 @@ class AgenticGraph:
             self.agentic_memory[node.agent_id] = []
             self.agent_schemas[node.agent_id] = agent_schema
 
-    def add_edge(self, source_id: str, target_id: str, condition: Optional[Callable[[Any], bool]] = None, is_required: bool = False):
-        
+
+    def add_edge(self, source_id: str, target_id: str, condition: Optional[Callable[[Any], bool]] = None, is_required: bool = True):
         if source_id not in self.nodes:
             raise ValueError(f"Source node '{source_id}' does not exist in the graph")
         if target_id not in self.nodes:
@@ -129,6 +129,7 @@ class AgenticGraph:
         if source_id not in self.edges:
             self.edges[source_id] = EdgeContainer()
         
+        # All edges are required by default unless explicitly set to False
         self.edges[source_id].regular_edges.append((target_id, condition, is_required))
 
         if target_id not in self.reverse_edges:
@@ -139,6 +140,8 @@ class AgenticGraph:
             if target_id not in self.required_dependencies:
                 self.required_dependencies[target_id] = set()
             self.required_dependencies[target_id].add(source_id)
+
+
 
     def add_branching_edge(self, source_id: str, condition: Callable[[Any], Any], branches: Dict[Any, Union[str, List[str]]], is_required: bool = False):
         if source_id not in self.nodes:
@@ -171,12 +174,12 @@ class AgenticGraph:
         edge_container = self.edges.get(current_node.id)
         
         if edge_container:
-            # Process regular edges
-            for target_id, condition, _ in edge_container.regular_edges:
-                if condition is None or condition(graph_data):
+            # Process all edges, adding required edges to next_nodes
+            for target_id, condition, is_required in edge_container.regular_edges:
+                if is_required and (condition is None or condition(graph_data)):
                     next_nodes.append(self.nodes[target_id])
             
-            # Process flexible branch if it exists
+            # Process flexible branch if it exists (assuming all flexible branches are required)
             if edge_container.flexible_branch:
                 branch = edge_container.flexible_branch
                 condition_result = branch.condition(graph_data)

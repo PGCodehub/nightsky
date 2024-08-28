@@ -8,9 +8,14 @@
     openai support - write inference fucntions - #Done
     Add conditional edges -- added two types of conditional edges, one that only runs next node if condtion is met , second is branching edge which will take to node/nodes based on the condition - #Done
     claude support - extend the inference functions from openai to claude - #DoneHopefully
-1.1. multi node input 
+1.1. multi node input - #Done and fixed most of bugs of update1
+    by default all the edges are required and if user specifies the edge as not required like optional , then it will not trigger the next node , only required edge will trigger the next node
 2. SubGraph funtionality
+    Make sure we have any entry point , if so we have to have a system where graph can be started to executed at any node 
+    i belive this logic would be better added at edge , taking in third type of edge 
+    When a new subgraph is added 
 3. Interept and Human in loop
 4. GUI first version
-5. Add streaming 
-6. parellel exectution , Asyc funcionality
+5. multi workflow versioning
+6. Add streaming 
+7. parellel exectution , Asyc funcionality
