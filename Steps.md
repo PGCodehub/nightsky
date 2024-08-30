@@ -10,12 +10,14 @@
     claude support - extend the inference functions from openai to claude - #DoneHopefully
 1.1. multi node input - #Done and fixed most of bugs of update1
     by default all the edges are required and if user specifies the edge as not required like optional , then it will not trigger the next node , only required edge will trigger the next node
-2. SubGraph funtionality
-    Make sure we have any entry point , if so we have to have a system where graph can be started to executed at any node 
-    i belive this logic would be better added at edge , taking in third type of edge 
-    When a new subgraph is added 
-3. Interept and Human in loop
+2. Graph Communincation funtionality - #Done
+3. Interept and Human in loop - #Done
+    Human as a tool can be done , but this means llm is decided to call the human support
+    Human approval before function call
+
 4. GUI first version
 5. multi workflow versioning
 6. Add streaming 
-7. parellel exectution , Asyc funcionality
+7. 
+8. RAG examples
+9. parellel exectution , Asyc funcionality

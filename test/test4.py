@@ -29,7 +29,7 @@ class MarketingStrategy(BaseModel):
     strategy: str
 
 class WorkflowState(BaseModel):
-    products: List[str]
+    products: List[str] = Field(default_factory=list)
     analyses: List[ProductAnalysis] = Field(default_factory=list)
     strategies: List[MarketingStrategy] = Field(default_factory=list)
 
@@ -262,7 +262,7 @@ def is_niche_market(graph_data: Dict[str, Dict[str, Any]]) -> bool:
 def test_marketing_workflow():
     initial_state = WorkflowState(products=["Smartphone", "Smart Watch", "Custom Mechanical Keyboard"])
 
-    graph = AgenticGraph(initial_state.dict(), chat_id="marketing_workflow")
+    graph = AgenticGraph(graph_id="marketing_workflow", data_schema=WorkflowState)
 
     # Add nodes
     graph.add_node(StartNode())
@@ -303,11 +303,15 @@ def test_marketing_workflow():
         print(f"  Required dependencies: {required_deps}")
 
     print("Executing the marketing workflow...")
-    graph.execute()
+    graph.execute(initial_data=initial_state.dict())
 
     # Test getting execution data
-    execution_id = graph.get_execution_ids()[-1]
-    execution_data = graph.get_execution_data(execution_id)
+    execution_id = graph.current_execution_id
+    execution_data = {
+        "metahistory": graph.get_metahistory(),
+        "agentic_memory": {agent_id: graph.get_agentic_memory(agent_id) for agent_id in graph.agent_ids},
+        "node_graph_state": graph.get_node_graph_state()
+    }
     print("\nExecution Data:")
     print(f"Metahistory entries: {len(execution_data['metahistory'][1])}")
     print(f"Agentic memory entries: {sum(len(mem) for mem in execution_data['agentic_memory'].values())}")
@@ -325,7 +329,7 @@ def test_marketing_workflow():
     # Print the final report
     final_report_node = graph.nodes.get("FinalReport")
     if final_report_node:
-        final_report_data = graph.node_graph_state[graph.current_execution_id].get("FinalReport", {})
+        final_report_data = graph.node_graph_state[graph.chat_id].get("FinalReport", {})
         if final_report_data:
             print("\nFinal Marketing Report:")
             print(final_report_data.get("result", "No final report generated."))
