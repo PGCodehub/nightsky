@@ -13,9 +13,13 @@
 2. Graph Communincation funtionality - #Done
 3. Interept and Human in loop - #Done
     Human as a tool can be done , but this means llm is decided to call the human support
-    Human approval before function call
-
+    Human approval before function call - yet to be done
 4. GUI first version
+    Create Basic UI setup - #Done
+    Add the agent config json system to be able to create a graph from graph - ##Done
+    code for deploy graph as api endpoint option 
+    function calls to send and recieve from frontend
+    Functional UI
 5. multi workflow versioning
 6. Add streaming 
 7. 

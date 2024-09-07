@@ -300,7 +300,7 @@ class AgenticGraph:
 
     def execute_branch(self, node: Node, source_graph_id: Optional[str] = None):
         while node and not self.stop_execution:
-            self.current_node = node
+            self.current_node = node 
             self.logger.info(f"Processing node '{node.name}' in graph '{self.graph_id}'")
 
             if not self.are_dependencies_met(node, self.chat_id):
@@ -326,8 +326,6 @@ class AgenticGraph:
                     elif prev_node.name in self.node_graph_state[self.chat_id]:
                         input_data[prev_node.name] = self.node_graph_state[self.chat_id][prev_node.name]
                 
-                                
-                
                 if not input_data:
                     raise ValueError(f"No available input data for {node.name}")
 
@@ -335,8 +333,8 @@ class AgenticGraph:
             
             if result is not None:
                 self.node_graph_state[self.chat_id][node.name] = result["graph_data"]
-                for connected_graph_id in self.connected_graphs:
-                    self._update_shared_keys(self.connected_graphs[connected_graph_id])
+                #for connected_graph_id in self.connected_graphs:
+                #    self._update_shared_keys(self.connected_graphs[connected_graph_id])
                 self.logger.info(f"Updated node graph state for '{node.name}'")
 
                 if result["metahistory"]:

@@ -1,0 +1,59 @@
+{
+  "graph1": {
+    "graph_id": "graph1",
+    "chat_id": "chat1",
+    "data_schema": {
+      "type": "object",
+      "properties": {
+        "common_key": {
+          "type": "string"
+        },
+        "graph1_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "common_key"
+      ]
+    },
+    "nodes": [
+      {
+        "id": "Start",
+        "type": "start"
+      },
+      {
+        "id": "Node1",
+        "type": "function",
+        "function": {
+          "function": "process_data_1",
+          "module": "__main__"
+        }
+      },
+      {
+        "id": "Node2",
+        "type": "function",
+        "function": {
+          "function": "process_data_2"
+        }
+      },
+      {
+        "id": "End",
+        "type": "end"
+      }
+    ],
+    "edges": [
+      {
+        "source": "Start",
+        "target": "Node1"
+      },
+      {
+        "source": "Node1",
+        "target": "Node2"
+      },
+      {
+        "source": "Node2",
+        "target": "End"
+      }
+    ]
+  }
+}
