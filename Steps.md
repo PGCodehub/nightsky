@@ -10,6 +10,7 @@
     claude support - extend the inference functions from openai to claude - #DoneHopefully
 1.1. multi node input - #Done and fixed most of bugs of update1
     by default all the edges are required and if user specifies the edge as not required like optional , then it will not trigger the next node , only required edge will trigger the next node
+    Bydefault we need make conditional edges to next node as not required edges , as they only get riggered in some cases - if i donot add to required list , then its fine i guess
 2. Graph Communincation funtionality - #Done
 3. Interept and Human in loop - #Done
     Human as a tool can be done , but this means llm is decided to call the human support
@@ -17,6 +18,19 @@
 4. GUI first version
     Create Basic UI setup - #Done
     Add the agent config json system to be able to create a graph from graph - ##Done
+5. Replicate real world examples
+    graph_websearch_agent
+        While building i got a feeling that goal i want to achieve is create a sharable agentic flow space that anyone imporve on if it is on public space 
+    SuperMemory
+        Basic Rag -- llama index maybe
+        Mem0
+        Copali version
+    TexttoSQL
+        TelcoGPT
+    Claude and Ollama support
+    Code Change Reviewer
+    Stock market helper
+6. GUI second version
     code for deploy graph as api endpoint option 
     function calls to send and recieve from frontend
     Functional UI

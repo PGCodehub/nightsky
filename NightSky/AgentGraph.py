@@ -304,7 +304,9 @@ class AgenticGraph:
             self.logger.info(f"Processing node '{node.name}' in graph '{self.graph_id}'")
 
             if not self.are_dependencies_met(node, self.chat_id):
-                self.logger.info(f"Node '{node.name}' is waiting for required dependencies")
+                required_deps = self.required_dependencies.get(node.id, set())
+                missing_deps = [dep for dep in required_deps if isinstance(dep, str) and dep not in self.node_graph_state[self.chat_id]]
+                self.logger.info(f"Node '{node.name}' is waiting for required dependencies: {missing_deps}. Required dependencies: {required_deps}")
                 return
 
             if isinstance(node, StartNode):
