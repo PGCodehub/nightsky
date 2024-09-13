@@ -19,8 +19,8 @@
     Create Basic UI setup - #Done
     Add the agent config json system to be able to create a graph from graph - ##Done
 5. Replicate real world examples
-    graph_websearch_agent
-        While building i got a feeling that goal i want to achieve is create a sharable agentic flow space that anyone imporve on if it is on public space 
+    graph_websearch_agent - Basic Done
+        While building i got a feeling that goal i want to achieve is create a sharable agentic flow space that anyone improve on if it is on sharable (public/private) space 
     SuperMemory
         Basic Rag -- llama index maybe
         Mem0

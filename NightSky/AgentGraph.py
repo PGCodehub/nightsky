@@ -4,6 +4,8 @@ from pydantic import BaseModel, ValidationError, Field
 import logging
 from concurrent.futures import ThreadPoolExecutor
 import time
+import asyncio
+from sse_manager import push_update
 
 class ExecutionError(Exception):
     pass
@@ -14,12 +16,11 @@ class AgentSchema(BaseModel):
 
 class MessageDict(BaseModel):
     role: str
-    content: str
-    tool_call: bool
+    input_data: Dict[str, Any]
+    agent_msgs: Optional[List[Dict[str, Any]]] = None
+    toolcall_in_output: bool
     tool_args: Optional[Dict[str, Any]] = None
-    result: Any
-    create_agent_msg: bool
-    node_index: Optional[Tuple[str, str, int]] = None
+    output_state: Any
     execution_id: str = ""
 
 class Node:
@@ -98,11 +99,41 @@ class AgenticGraph:
         self.agent_schemas: Dict[str, Type[BaseModel]] = {}
         self.node_graph_state: Dict[str, Dict[str, Any]] = {self.chat_id: {}}
         self.current_execution_id: Optional[str] = None
+
+        ##SSE 
+        self.sse_queue = asyncio.Queue()
+        self.sse_task = None
         
         self.logger = logging.getLogger(f"AgenticGraph-{self.graph_id}")
         self.logger.setLevel(logging.INFO)
 
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+    async def sse_sender(self):
+        while True:
+            try:
+                update = await self.sse_queue.get()
+                await push_update(update['chat_id'], update)
+                self.logger.info(f"SSE update sent for node: {update.get('node')}, chat_id: {update['chat_id']}")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error sending SSE update: {str(e)}")
+            finally:
+                self.sse_queue.task_done()
+
+    async def start_sse_sender(self):
+        if self.sse_task is None or self.sse_task.done():
+            self.sse_task = asyncio.create_task(self.sse_sender())
+            await asyncio.sleep(0)  # Ensure the task starts
+
+    async def stop_sse_sender(self):
+        if self.sse_task:
+            self.sse_task.cancel()
+            try:
+                await self.sse_task
+            except asyncio.CancelledError:
+                pass
 
     def add_node(self, node_or_name: Union[Node, str], function: Optional[Callable] = None, is_agent: bool = False, agent_schema: Optional[Type[BaseModel]] = None):
         if isinstance(node_or_name, Node):
@@ -269,36 +300,39 @@ class AgenticGraph:
                     return False
         return True
 
-    def create_agent_message(self, metahistory: Any, agent_id: str) -> Dict[str, Any]:
-        schema = self.agent_schemas.get(agent_id, self.agent_schema_type)
-        try:
-            if isinstance(metahistory, self.metahistory_type):
-                agent_message = schema(**metahistory.dict(exclude={'create_agent_msg', 'node_index'}))
-            else:
-                agent_message = schema(**{k: v for k, v in metahistory.items() if k not in {'create_agent_msg', 'node_index'}})
-            return agent_message.dict(exclude_unset=True)
-        except ValidationError as e:
-            logging.warning(f"Validation error for agent {agent_id}: {e}")
-            return {"role": getattr(metahistory, 'role', 'unknown'), "content": getattr(metahistory, 'content', '')}
+    # def create_agent_message(self, metahistory: Any, agent_id: str) -> Dict[str, Any]:
+    #     schema = self.agent_schemas.get(agent_id, self.agent_schema_type)
+    #     try:
+    #         if isinstance(metahistory, self.metahistory_type):
+    #             agent_message = schema(**metahistory.dict(exclude={'create_agent_msg', 'node_index'}))
+    #         else:
+    #             agent_message = schema(**{k: v for k, v in metahistory.items() if k not in {'create_agent_msg', 'node_index'}})
+    #         return agent_message.dict(exclude_unset=True)
+    #     except ValidationError as e:
+    #         logging.warning(f"Validation error for agent {agent_id}: {e}")
+    #         return {"role": getattr(metahistory, 'role', 'unknown'), "content": getattr(metahistory, 'content', '')}
 
-    def execute_node(self, node: Node, input_data: Dict[str, Any], max_retries: int = 1) -> Any:
+    async def execute_node(self, node: Node, input_data: Dict[str, Any], max_retries: int = 1) -> Any:
         self.logger.info(f"Executing node '{node.name}' in graph '{self.graph_id}'")
+        loop = asyncio.get_event_loop()
         for attempt in range(max_retries):
             try:
                 if node.is_agent:
                     agentic_memory = self.agentic_memory.get(node.agent_id, [])
-                    result = node.execute(input_data, agentic_memory)
+                    # Run node.execute in an executor to prevent blocking the event loop
+                    result = await loop.run_in_executor(None, node.execute, input_data, agentic_memory)
                 else:
-                    result = node.execute(input_data)
+                    # Run node.execute in an executor to prevent blocking the event loop
+                    result = await loop.run_in_executor(None, node.execute, input_data)
                 self.logger.info(f"Node '{node.name}' execution completed successfully")
                 return result
             except ExecutionError as e:
                 self.logger.error(f"Attempt {attempt + 1}/{max_retries} failed for node '{node.name}': {str(e)}")
                 if attempt == max_retries - 1:
                     raise
-                time.sleep(1)  # Wait before retrying
+                await asyncio.sleep(1)  # Wait before retrying
 
-    def execute_branch(self, node: Node, source_graph_id: Optional[str] = None):
+    async def execute_branch(self, node: Node, source_graph_id: Optional[str] = None):
         while node and not self.stop_execution:
             self.current_node = node 
             self.logger.info(f"Processing node '{node.name}' in graph '{self.graph_id}'")
@@ -331,7 +365,7 @@ class AgenticGraph:
                 if not input_data:
                     raise ValueError(f"No available input data for {node.name}")
 
-            result = self.execute_node(node, input_data)
+            result = await self.execute_node(node, input_data)
             
             if result is not None:
                 self.node_graph_state[self.chat_id][node.name] = result["graph_data"]
@@ -351,14 +385,25 @@ class AgenticGraph:
                         metahistory.execution_id = self.current_execution_id
                         entry_id = str(uuid.uuid4())
 
-                        if getattr(metahistory, 'create_agent_msg', False) and node.is_agent:
-                            agent_message = self.create_agent_message(metahistory, node.agent_id)
-                            self.agentic_memory[node.agent_id].append(agent_message)
-                            msg_index = len(self.agentic_memory[node.agent_id]) - 1
-                            metahistory.node_index = (node.name, node.agent_id, msg_index)
+                        if node.is_agent:
+                            if metahistory.agent_msgs is not None:
+                                self.agentic_memory[node.agent_id] = metahistory.agent_msgs
+                            else:
+                                self.agentic_memory[node.agent_id] = []  # Clear the memory if no new messages
 
                         self.metahistory[self.chat_id][0][entry_id] = metahistory
                         self.metahistory[self.chat_id][1].append(entry_id)
+
+                        # Push update via SSE
+                        update = {
+                            "node": node.name,
+                            "chat_id": self.chat_id,
+                            "entry_id": entry_id,
+                            # "metahistory": metahistory.dict()
+                        }
+                        await self.sse_queue.put(update)
+                        self.logger.info(f"SSE update queued for node: {node.name}, chat_id: {self.chat_id}")
+
                     except Exception as e:
                         logging.warning(f"Invalid metahistory from node {node.name}. Error: {str(e)}")
 
@@ -384,21 +429,19 @@ class AgenticGraph:
                     node = next_node
             else:
                 self.logger.info(f"Branching execution for node '{node.name}' to {len(next_nodes)} parallel paths")
-                with ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
-                    futures = []
-                    for next_node, next_source_graph_id in next_nodes[:self.max_parallel]:
-                        if next_source_graph_id:
-                            futures.append(executor.submit(self.connected_graphs[next_source_graph_id].execute_branch, next_node, self.graph_id))
-                        else:
-                            futures.append(executor.submit(self.execute_branch, next_node))
-                    for future in futures:
-                        future.result()
+                tasks = []
+                for next_node, next_source_graph_id in next_nodes[:self.max_parallel]:
+                    if next_source_graph_id:
+                        tasks.append(asyncio.create_task(self.connected_graphs[next_source_graph_id].execute_branch(next_node, self.graph_id)))
+                    else:
+                        tasks.append(asyncio.create_task(self.execute_branch(next_node)))
+                await asyncio.gather(*tasks)
                 return
 
         if self.stop_execution:
             self.logger.info(f"Execution stopped at node: '{node.name}'")
 
-    def execute(self, initial_data: Any, max_parallel: int = 3, chat_id: Optional[str] = None):
+    async def execute(self, initial_data: Any, max_parallel: int = 3, chat_id: Optional[str] = None):
         if not self.start_node:
             raise ValueError("Graph must have a start node")
 
@@ -420,11 +463,20 @@ class AgenticGraph:
         if self.chat_id not in self.node_graph_state:
             self.node_graph_state[self.chat_id] = {}
 
+
         self.current_execution_id = str(uuid.uuid4())  # Generate execution_id for this run
 
         start_node = self.current_node if self.current_node else self.start_node
         self.logger.info(f"Starting graph execution from node '{start_node.name}'. Execution ID: {self.current_execution_id}")
-        self.execute_branch(start_node)
+
+        await self.start_sse_sender()
+
+        try:
+            await self.execute_branch(start_node)
+        finally:
+            # Don't stop the SSE sender here, let it continue running
+            pass
+
         self.logger.info(f"Graph execution completed. Chat ID: {self.chat_id}, Execution ID: {self.current_execution_id}")
 
     def stop_at_current_node(self):

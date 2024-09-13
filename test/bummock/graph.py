@@ -18,7 +18,7 @@ def create_search_workflow_graph() -> AgenticGraph:
     graph.add_node("Researcher", researcher, is_agent=True)
     graph.add_node("FirecrawlScrape", firecrawl_scrape, is_agent=False)  # This is a tool node
     graph.add_node("Reporter", reporter, is_agent=True)
-    graph.add_node("Reviewer", reviewer, is_agent=True)  # New Reviewer node
+    graph.add_node("Reviewer", reviewer, is_agent=True) 
     graph.add_node(EndNode())
 
     # Add edges
