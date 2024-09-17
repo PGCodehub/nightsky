@@ -2,7 +2,7 @@ import asyncio
 import aiohttp
 
 async def listen_for_sse_updates(chat_id):
-    url = f"http://localhost:8003/sse/{chat_id}"
+    url = f"http://localhost:8000/sse/{chat_id}"
     print(f"Connecting to SSE endpoint: {url}")
     
     while True:  # Keep trying to reconnect if the connection is lost

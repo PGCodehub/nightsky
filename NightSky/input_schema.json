@@ -1,0 +1,133 @@
+{
+  "type": "object",
+  "properties": {
+    "input_query": {
+      "type": "string"
+    },
+    "search_strategy": {
+      "type": "object",
+      "properties": {
+        "search_phrases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "phrase": {
+                "type": "string"
+              },
+              "strategy": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "phrase",
+              "strategy"
+            ]
+          }
+        },
+        "additional_information": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "search_phrases",
+        "additional_information"
+      ]
+    },
+    "tavily_state": {
+      "type": "object",
+      "properties": {
+        "search_depth": {
+          "type": "string"
+        },
+        "requests_remaining": {
+          "type": "integer"
+        },
+        "last_search_time": {
+          "type": "number"
+        },
+        "cache": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "firecrawl_state": {
+      "type": "object",
+      "properties": {
+        "requests_remaining": {
+          "type": "integer"
+        },
+        "last_scrape_time": {
+          "type": "number"
+        },
+        "cache": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        },
+        "scrapelist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "research_results": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "content",
+          "title"
+        ]
+      },
+      "propertyNames": {
+        "type": "string"
+      }
+    },
+    "final_report": {
+      "type": "string"
+    },
+    "review_feedback": {
+      "type": "string"
+    },
+    "review_pass": {
+      "type": "boolean"
+    },
+    "next_agent": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "input_query",
+    "search_strategy",
+    "tavily_state",
+    "firecrawl_state"
+  ]
+}

@@ -1,0 +1,241 @@
+{
+    "search_workflow": {
+        "graph_id": "search_workflow",
+        "data_schema": {
+            "type": "object",
+            "properties": {
+                "input_query": {
+                    "type": "string",
+                    "required": true
+                },
+                "search_strategy": {
+                    "type": "object",
+                    "properties": {
+                        "search_phrases": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "phrase": {
+                                        "type": "string",
+                                        "required": true
+                                    },
+                                    "strategy": {
+                                        "type": "string",
+                                        "required": true
+                                    }
+                                }
+                            },
+                            "required": true
+                        },
+                        "additional_information": {
+                            "type": "string",
+                            "required": true
+                        }
+                    },
+                    "required": true
+                },
+                "tavily_state": {
+                    "type": "object",
+                    "properties": {
+                        "search_depth": {
+                            "type": "string",
+                            "default": "basic"
+                        },
+                        "requests_remaining": {
+                            "type": "integer",
+                            "default": 100
+                        },
+                        "last_search_time": {
+                            "type": [
+                                "number",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "cache": {
+                            "type": "object",
+                            "default": {}
+                        }
+                    },
+                    "required": true
+                },
+                "firecrawl_state": {
+                    "type": "object",
+                    "properties": {
+                        "requests_remaining": {
+                            "type": "integer",
+                            "default": 100
+                        },
+                        "last_scrape_time": {
+                            "type": [
+                                "number",
+                                "null"
+                            ],
+                            "default": null
+                        },
+                        "cache": {
+                            "type": "object",
+                            "default": {}
+                        },
+                        "scrapelist": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "default": []
+                        }
+                    },
+                    "required": true
+                },
+                "research_results": {
+                    "type": "object",
+                    "default": {}
+                },
+                "final_report": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "default": null
+                },
+                "review_feedback": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "default": null
+                },
+                "review_pass": {
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "default": null
+                },
+                "next_agent": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "default": null
+                }
+            },
+            "required": [
+                "input_query",
+                "search_strategy",
+                "tavily_state",
+                "firecrawl_state"
+            ]
+        },
+        "nodes": [
+            {
+                "id": "Start",
+                "type": "start"
+            },
+            {
+                "id": "SearchStrategyPlanner",
+                "type": "agent",
+                "function": {
+                    "function": "search_strategy_planner"
+                },
+                "is_agent": true
+            },
+            {
+                "id": "ExecuteTavilySearch",
+                "type": "function",
+                "function": {
+                    "function": "execute_tavily_search"
+                },
+                "is_agent": false
+            },
+            {
+                "id": "Researcher",
+                "type": "agent",
+                "function": {
+                    "function": "researcher"
+                },
+                "is_agent": true
+            },
+            {
+                "id": "FirecrawlScrape",
+                "type": "function",
+                "function": {
+                    "function": "firecrawl_scrape"
+                },
+                "is_agent": false
+            },
+            {
+                "id": "Reporter",
+                "type": "agent",
+                "function": {
+                    "function": "reporter"
+                },
+                "is_agent": true
+            },
+            {
+                "id": "Reviewer",
+                "type": "agent",
+                "function": {
+                    "function": "reviewer"
+                },
+                "is_agent": true
+            },
+            {
+                "id": "End",
+                "type": "end"
+            }
+        ],
+        "edges": [
+            {
+                "source": "Start",
+                "target": "SearchStrategyPlanner"
+            },
+            {
+                "source": "SearchStrategyPlanner",
+                "target": "ExecuteTavilySearch"
+            },
+            {
+                "source": "ExecuteTavilySearch",
+                "target": "Researcher"
+            },
+            {
+                "source": "Researcher",
+                "target": {
+                    "FirecrawlScrape": {
+                        "condition": "len(state.firecrawl_state.scrapelist) > 0"
+                    },
+                    "Reporter": {
+                        "condition": "len(state.firecrawl_state.scrapelist) == 0"
+                    }
+                }
+            },
+            {
+                "source": "FirecrawlScrape",
+                "target": "Researcher",
+                "is_required": false
+            },
+            {
+                "source": "Reporter",
+                "target": "Reviewer"
+            },
+            {
+                "source": "Reviewer",
+                "target": {
+                    "SearchStrategyPlanner": {
+                        "condition": "state.next_agent == 'SearchStrategyPlanner'"
+                    },
+                    "Researcher": {
+                        "condition": "state.next_agent == 'Researcher'"
+                    },
+                    "Reporter": {
+                        "condition": "state.next_agent == 'Reporter'"
+                    },
+                    "End": {
+                        "condition": "state.next_agent == 'End'"
+                    }
+                }
+            }
+        ]
+    }
+}

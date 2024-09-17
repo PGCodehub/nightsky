@@ -1,0 +1,100 @@
+Here are detailed instructions on how to read and parse the JSON schema defined in `input_schema.json`:
+
+1. Root Structure
+   - The schema is a JSON object with a "type" of "object".
+   - It has two main sections: "properties" and "required".
+
+2. Properties
+   - Each key in the "properties" object represents a field in the AgentState.
+   - Each field has its own schema definition.
+
+3. Required Fields
+   - The "required" array lists fields that must be present in valid data.
+   - In this case: "input_query", "search_strategy", "tavily_state", and "firecrawl_state".
+
+4. Field Types
+   - "type": Specifies the JSON data type for each field.
+   - Common types: "string", "integer", "number", "boolean", "object", "array".
+
+5. Nested Objects
+   - Fields with "type": "object" have their own "properties" sub-schema.
+   - Example: "search_strategy" is an object with its own properties.
+
+6. Arrays
+   - Fields with "type": "array" have an "items" property defining the array elements.
+   - Example: "search_phrases" in "search_strategy" is an array of objects.
+
+7. Parsing Specific Fields:
+
+   a. input_query
+      - Type: string
+
+   b. search_strategy
+      - Type: object
+      - Properties:
+        - search_phrases: array of objects
+          - Each object has "phrase" (string) and "strategy" (string)
+        - additional_information: string
+
+   c. tavily_state
+      - Type: object
+      - Properties:
+        - search_depth: string
+        - requests_remaining: integer
+        - last_search_time: number
+        - cache: object with string keys and object values
+
+   d. firecrawl_state
+      - Type: object
+      - Properties:
+        - requests_remaining: integer
+        - last_scrape_time: number
+        - cache: object with string keys and object values
+        - scrapelist: array of strings
+
+   e. research_results
+      - Type: object
+      - Additional properties allowed with string keys
+      - Each value is an object with properties:
+        - url: string
+        - content: string
+        - title: string
+        - context: string (optional)
+
+   f. final_report
+      - Type: string
+
+   g. review_feedback
+      - Type: string
+
+   h. review_pass
+      - Type: boolean
+
+   i. next_agent
+      - Type: string
+
+8. Optional Fields
+   - Fields not listed in "required" are optional.
+   - Optional fields: research_results, final_report, review_feedback, review_pass, next_agent.
+
+9. Additional Properties
+   - Objects like cache in tavily_state and firecrawl_state allow additional properties.
+   - These use "additionalProperties" and "propertyNames" to define the structure.
+
+10. Validation
+    - When parsing, ensure all required fields are present.
+    - Validate each field's type against its schema definition.
+    - For nested objects and arrays, recursively apply the schema rules.
+
+11. Handling Nested Structures
+    - For nested objects, create corresponding nested data structures in your code.
+    - For arrays, create lists or arrays and populate them with the correct object types.
+
+12. Default Values
+    - The schema doesn't specify default values. Your application logic should handle missing optional fields.
+
+13. Special Considerations
+    - The cache fields in tavily_state and firecrawl_state allow flexible key-value pairs, where keys are strings and values are objects.
+    - The research_results field is a dictionary where keys are strings and values are objects representing research results, each with url, content, title, and optional context.
+
+By following these instructions, you can accurately parse and validate data against this schema, ensuring the correct data types and structures are maintained throughout your application.

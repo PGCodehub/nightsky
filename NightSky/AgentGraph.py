@@ -1,11 +1,13 @@
 import uuid
-from typing import Any, Callable, Dict, List, Optional, Union, TypedDict, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Union, TypedDict, Tuple, Type, TypeVar, Set
 from pydantic import BaseModel, ValidationError, Field
 import logging
 from concurrent.futures import ThreadPoolExecutor
 import time
 import asyncio
 from sse_manager import push_update
+import json
+from datetime import date, datetime
 
 class ExecutionError(Exception):
     pass
@@ -74,8 +76,22 @@ class DataSchema(BaseModel):
     field2: int = Field(...)
     field3: Optional[List[str]] = Field(default=None)
 
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        elif hasattr(obj, 'to_dict'):
+            return obj.to_dict()
+        return super().default(obj)
+
+def serialize_for_sse(data: Dict[str, Any], max_size: int = 1000000) -> str:
+    serialized = json.dumps(data, cls=CustomEncoder)
+    if len(serialized) > max_size:
+        return json.dumps({"error": "Data too large for SSE"})
+    return serialized
+
 class AgenticGraph:
-    def __init__(self, graph_id: str, chat_id: Optional[str] = None, data_schema: Type[BaseModel] = DataSchema, max_parallel: int = 3, metahistory_type: Type = MessageDict, agent_schema_type: Type[BaseModel] = AgentSchema):
+    def __init__(self, graph_id: str, chat_id: Optional[str] = None, data_schema: Type[BaseModel] = DataSchema, max_parallel: int = 3, metahistory_type: Type = MessageDict, agent_schema_type: Type[BaseModel] = AgentSchema, max_sse_size: int = 1000000):
         self.graph_id = graph_id
         self.chat_id = chat_id or str(uuid.uuid4())
         self.initial_data = None
@@ -109,11 +125,18 @@ class AgenticGraph:
 
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+        # New attribute to store common fields and node-specific fields
+        self.sse_fields: Dict[str, Set[str]] = {"common": set()}
+
+        self.max_sse_size = max_sse_size
+
     async def sse_sender(self):
         while True:
             try:
                 update = await self.sse_queue.get()
-                await push_update(update['chat_id'], update)
+                # Serialize the update here
+                serialized_update = serialize_for_sse(update, self.max_sse_size)
+                await push_update(update['chat_id'], serialized_update)
                 self.logger.info(f"SSE update sent for node: {update.get('node')}, chat_id: {update['chat_id']}")
             except asyncio.CancelledError:
                 break
@@ -300,18 +323,6 @@ class AgenticGraph:
                     return False
         return True
 
-    # def create_agent_message(self, metahistory: Any, agent_id: str) -> Dict[str, Any]:
-    #     schema = self.agent_schemas.get(agent_id, self.agent_schema_type)
-    #     try:
-    #         if isinstance(metahistory, self.metahistory_type):
-    #             agent_message = schema(**metahistory.dict(exclude={'create_agent_msg', 'node_index'}))
-    #         else:
-    #             agent_message = schema(**{k: v for k, v in metahistory.items() if k not in {'create_agent_msg', 'node_index'}})
-    #         return agent_message.dict(exclude_unset=True)
-    #     except ValidationError as e:
-    #         logging.warning(f"Validation error for agent {agent_id}: {e}")
-    #         return {"role": getattr(metahistory, 'role', 'unknown'), "content": getattr(metahistory, 'content', '')}
-
     async def execute_node(self, node: Node, input_data: Dict[str, Any], max_retries: int = 1) -> Any:
         self.logger.info(f"Executing node '{node.name}' in graph '{self.graph_id}'")
         loop = asyncio.get_event_loop()
@@ -319,10 +330,8 @@ class AgenticGraph:
             try:
                 if node.is_agent:
                     agentic_memory = self.agentic_memory.get(node.agent_id, [])
-                    # Run node.execute in an executor to prevent blocking the event loop
                     result = await loop.run_in_executor(None, node.execute, input_data, agentic_memory)
                 else:
-                    # Run node.execute in an executor to prevent blocking the event loop
                     result = await loop.run_in_executor(None, node.execute, input_data)
                 self.logger.info(f"Node '{node.name}' execution completed successfully")
                 return result
@@ -345,10 +354,12 @@ class AgenticGraph:
 
             if isinstance(node, StartNode):
                 input_data = self.initial_data
+                input_node_names = []
             else:
                 previous_nodes = self.get_previous_nodes(node)
                 self.logger.info(f"Previous nodes for '{node.name}': {[n.name if isinstance(n, Node) else f'{n[0]}:{n[1].name}' for n in previous_nodes]}")
                 input_data = {}
+                input_node_names = []
                 for prev_node in previous_nodes:
                     if isinstance(prev_node, tuple):
                         prev_graph_id, prev_node = prev_node
@@ -357,20 +368,34 @@ class AgenticGraph:
                         shareable_data = prev_graph.get_shareable_data(self.graph_id, prev_node.name)
                         if shareable_data is not None:
                             input_data[prev_node.name] = shareable_data
+                            input_node_names.append(f"{prev_graph_id}:{prev_node.name}")
                         else:
                             self.logger.warning(f"Empty shareable data for node '{prev_node.name}' from graph '{prev_graph_id}'")
                     elif prev_node.name in self.node_graph_state[self.chat_id]:
                         input_data[prev_node.name] = self.node_graph_state[self.chat_id][prev_node.name]
+                        input_node_names.append(prev_node.name)
                 
                 if not input_data:
                     raise ValueError(f"No available input data for {node.name}")
+
+            # SSE update before node execution
+            pre_execution_update = {
+                "node": node.name,
+                "chat_id": self.chat_id, 
+                "execution_id": self.current_execution_id,
+                "status": "starting",
+                "input_nodes": input_node_names
+            }
+
+            
+            await self.sse_queue.put(pre_execution_update)
+            self.logger.info(f"Pre-execution SSE update queued for node: {node.name}, chat_id: {self.chat_id}, input nodes: {input_node_names}")
+
 
             result = await self.execute_node(node, input_data)
             
             if result is not None:
                 self.node_graph_state[self.chat_id][node.name] = result["graph_data"]
-                #for connected_graph_id in self.connected_graphs:
-                #    self._update_shared_keys(self.connected_graphs[connected_graph_id])
                 self.logger.info(f"Updated node graph state for '{node.name}'")
 
                 if result["metahistory"]:
@@ -394,18 +419,25 @@ class AgenticGraph:
                         self.metahistory[self.chat_id][0][entry_id] = metahistory
                         self.metahistory[self.chat_id][1].append(entry_id)
 
-                        # Push update via SSE
-                        update = {
+                        # Filter the agent state for SSE using the node name
+                        filtered_agent_state = self._filter_sse_data(node.name, result["graph_data"])
+                        
+                        # SSE update after execution
+                        sse_update = {
                             "node": node.name,
                             "chat_id": self.chat_id,
                             "entry_id": entry_id,
-                            # "metahistory": metahistory.dict()
+                            "agent_state": filtered_agent_state,
+                            "execution_id": self.current_execution_id,
+                            "status": "completed"
                         }
-                        await self.sse_queue.put(update)
+                        
+                        # Queue the SSE update (not serialized)
+                        await self.sse_queue.put(sse_update)
                         self.logger.info(f"SSE update queued for node: {node.name}, chat_id: {self.chat_id}")
 
                     except Exception as e:
-                        logging.warning(f"Invalid metahistory from node {node.name}. Error: {str(e)}")
+                        logging.warning(f"Error processing metahistory or preparing SSE update for node {node.name}. Error: {str(e)}")
 
             if isinstance(node, EndNode):
                 self.logger.info(f"Reached EndNode: '{node.name}'")
@@ -423,7 +455,7 @@ class AgenticGraph:
                 
                 if next_source_graph_id:
                     # If the next node is in a different graph, call that graph's execute_branch
-                    self.connected_graphs[next_source_graph_id].execute_branch(next_node, self.graph_id)
+                    await self.connected_graphs[next_source_graph_id].execute_branch(next_node, self.graph_id)
                     return
                 else:
                     node = next_node
@@ -546,3 +578,107 @@ class AgenticGraph:
 
     def __repr__(self):
         return self.__str__()
+
+    def set_sse_fields(self, fields: Union[List[str], Dict[str, List[str]]]):
+        """
+        Set the list of fields from the agent state to be sent via SSE.
+        
+        Args:
+            fields (Union[List[str], Dict[str, List[str]]]): 
+                Either a list of common fields for all nodes, or a dictionary where keys are node names 
+                (or "common" for fields common to all nodes) and values are lists of field names. 
+                Nested fields can be specified using dot notation.
+
+        Example:
+            # Set common fields for all nodes
+            graph.set_sse_fields(['output', 'metadata.timestamp'])
+
+            # Set both common and node-specific fields
+            graph.set_sse_fields({
+                'common': ['output', 'metadata.timestamp'],
+                'node1': ['intermediate_results.step1'],
+                'node2': ['analysis_result']
+            })
+        """
+        if isinstance(fields, list):
+            self.sse_fields = {"common": set(fields)}
+        elif isinstance(fields, dict):
+            self.sse_fields = {k: set(v) for k, v in fields.items()}
+            if "common" not in self.sse_fields:
+                self.sse_fields["common"] = set()
+        else:
+            raise ValueError("fields must be either a list or a dictionary")
+
+    def update_sse_fields(self, fields: Union[List[str], Dict[str, List[str]]], remove: bool = False):
+        """
+        Update the list of fields from the agent state to be sent via SSE.
+
+        Args:
+            fields (Union[List[str], Dict[str, List[str]]]): 
+                Either a list of common fields for all nodes, or a dictionary where keys are node names 
+                (or "common" for fields common to all nodes) and values are lists of field names to add or remove.
+            remove (bool): If True, remove the specified fields. If False, add them.
+
+        Example:
+            # Add common fields for all nodes
+            graph.update_sse_fields(['error_log'])
+
+            # Add node-specific fields
+            graph.update_sse_fields({
+                'node1': ['new_field1'],
+                'node2': ['new_field2']
+            })
+
+            # Remove fields
+            graph.update_sse_fields(['output'], remove=True)
+            graph.update_sse_fields({'node1': ['intermediate_results.step1']}, remove=True)
+        """
+        if isinstance(fields, list):
+            if remove:
+                self.sse_fields["common"] -= set(fields)
+            else:
+                self.sse_fields["common"] |= set(fields)
+        elif isinstance(fields, dict):
+            for node, node_fields in fields.items():
+                if node not in self.sse_fields:
+                    self.sse_fields[node] = set()
+                if remove:
+                    self.sse_fields[node] -= set(node_fields)
+                else:
+                    self.sse_fields[node] |= set(node_fields)
+        else:
+            raise ValueError("fields must be either a list or a dictionary")
+
+    def _filter_sse_data(self, node_name: str, agent_state: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Filter the agent state based on the specified SSE fields for the given node and common fields.
+
+        Args:
+            node_name (str): The name of the node being executed.
+            agent_state (Dict[str, Any]): The agent state after a node is run.
+
+        Returns:
+            Dict[str, Any]: Filtered data containing only the specified fields for the node and common fields.
+        """
+        fields_to_include = self.sse_fields.get("common", set()) | self.sse_fields.get(node_name, set())
+
+        if not fields_to_include:
+            return ""
+
+        filtered_data = {}
+        for field in fields_to_include:
+            parts = field.split('.')
+            value = agent_state
+            for part in parts:
+                if isinstance(value, dict) and part in value:
+                    value = value[part]
+                else:
+                    value = None
+                    break
+            if value is not None:
+                current = filtered_data
+                for part in parts[:-1]:
+                    current = current.setdefault(part, {})
+                current[parts[-1]] = value
+
+        return filtered_data

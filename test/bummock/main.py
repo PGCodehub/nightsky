@@ -69,7 +69,7 @@ async def sse(request: Request, chat_id: str):
     except Exception as e:
         print(f"Error in SSE endpoint for chat_id {chat_id}: {str(e)}")
         raise
-
+ 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8003, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -13,7 +13,7 @@ sys.path.append('/root/nightsky/NightSky')
 from agent_state import AgentState, SearchStrategy, SearchPhrase , FirecrawlState
 
 async def call_execute_api(chat_id, initial_data):
-    url = f"http://localhost:8003/execute/{chat_id}"
+    url = f"http://localhost:8000/execute/{chat_id}"
     payload = {"initial_data": initial_data.dict()}
     
     async with aiohttp.ClientSession() as session:

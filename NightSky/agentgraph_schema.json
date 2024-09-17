@@ -22,7 +22,10 @@
                             "type": {
                                 "type": "string"
                             },
-                            "default": {}
+                            "default": {},
+                            "required": {
+                                "type": "boolean"
+                            }
                         },
                         "required": [
                             "type"
