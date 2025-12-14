@@ -1,4 +1,4 @@
-# NightSky AgentGraph 🌙
+# NightSky Agentic FrameWork🌙
 
 A powerful Python framework for building and orchestrating complex agentic workflows with support for parallel execution, conditional branching, inter-graph communication, and real-time streaming updates.
 
