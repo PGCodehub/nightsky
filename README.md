@@ -567,10 +567,8 @@ See [LICENSE](LICENSE) file for details.
 
 For questions and support:
 - Open an issue on GitHub
-- Check the [examples](test/) directory
-- Review the [notebooks](notebooks/) for detailed walkthroughs
 
 ---
 
-Built with ❤️ for the AI agent community
+Built with ❤️ for the AI agent community by PGCODEHUB
 
