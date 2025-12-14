@@ -1,0 +1,163 @@
+{
+  "graph_id": "customer_support_workflow",
+  "description": "Automated customer support workflow with AI agents",
+  "version": "1.0.0",
+  "data_schema": {
+    "type": "CustomerSupportState",
+    "fields": {
+      "customer_id": {"type": "str", "required": true},
+      "issue_type": {"type": "str", "required": true},
+      "priority": {"type": "str", "default": "normal"},
+      "description": {"type": "str", "required": true},
+      "resolution": {"type": "str", "default": ""},
+      "status": {"type": "str", "default": "pending"},
+      "agent_notes": {"type": "list", "default": []},
+      "satisfaction_score": {"type": "float", "default": 0.0}
+    }
+  },
+  "nodes": [
+    {
+      "id": "Start",
+      "type": "StartNode",
+      "name": "Start"
+    },
+    {
+      "id": "TicketClassifier",
+      "type": "agent",
+      "name": "Ticket Classifier",
+      "function": "classify_ticket",
+      "description": "Classifies incoming support tickets by type and priority"
+    },
+    {
+      "id": "TechnicalSupport",
+      "type": "agent",
+      "name": "Technical Support Agent",
+      "function": "handle_technical_issue",
+      "description": "Handles technical support issues"
+    },
+    {
+      "id": "BillingSupport",
+      "type": "agent",
+      "name": "Billing Support Agent",
+      "function": "handle_billing_issue",
+      "description": "Handles billing and payment issues"
+    },
+    {
+      "id": "GeneralSupport",
+      "type": "agent",
+      "name": "General Support Agent",
+      "function": "handle_general_issue",
+      "description": "Handles general inquiries and questions"
+    },
+    {
+      "id": "QualityCheck",
+      "type": "node",
+      "name": "Quality Assurance",
+      "function": "quality_check",
+      "description": "Reviews resolution quality"
+    },
+    {
+      "id": "CustomerFeedback",
+      "type": "agent",
+      "name": "Feedback Collector",
+      "function": "collect_feedback",
+      "description": "Collects customer satisfaction feedback"
+    },
+    {
+      "id": "End",
+      "type": "EndNode",
+      "name": "End"
+    }
+  ],
+  "edges": [
+    {
+      "source": "Start",
+      "target": "TicketClassifier",
+      "type": "regular",
+      "required": true
+    },
+    {
+      "source": "TicketClassifier",
+      "target": "TechnicalSupport",
+      "type": "conditional",
+      "condition": "is_technical_issue",
+      "required": true
+    },
+    {
+      "source": "TicketClassifier",
+      "target": "BillingSupport",
+      "type": "conditional",
+      "condition": "is_billing_issue",
+      "required": true
+    },
+    {
+      "source": "TicketClassifier",
+      "target": "GeneralSupport",
+      "type": "conditional",
+      "condition": "is_general_issue",
+      "required": true
+    },
+    {
+      "source": "TechnicalSupport",
+      "target": "QualityCheck",
+      "type": "regular",
+      "required": true
+    },
+    {
+      "source": "BillingSupport",
+      "target": "QualityCheck",
+      "type": "regular",
+      "required": true
+    },
+    {
+      "source": "GeneralSupport",
+      "target": "QualityCheck",
+      "type": "regular",
+      "required": true
+    },
+    {
+      "source": "QualityCheck",
+      "target": "CustomerFeedback",
+      "type": "regular",
+      "required": true
+    },
+    {
+      "source": "CustomerFeedback",
+      "target": "End",
+      "type": "regular",
+      "required": true
+    }
+  ],
+  "branching": [
+    {
+      "source": "TicketClassifier",
+      "condition": "route_by_issue_type",
+      "branches": {
+        "technical": "TechnicalSupport",
+        "billing": "BillingSupport",
+        "general": "GeneralSupport"
+      }
+    }
+  ],
+  "settings": {
+    "max_parallel": 3,
+    "max_retries": 2,
+    "timeout": 300,
+    "enable_sse": true,
+    "sse_fields": {
+      "common": ["status", "priority"],
+      "TicketClassifier": ["issue_type"],
+      "TechnicalSupport": ["resolution"],
+      "BillingSupport": ["resolution"],
+      "GeneralSupport": ["resolution"],
+      "CustomerFeedback": ["satisfaction_score"]
+    }
+  },
+  "metadata": {
+    "created_by": "Support Team",
+    "created_at": "2024-01-01",
+    "tags": ["customer-support", "automation", "ai-agents"],
+    "use_case": "Automated multi-tier customer support system"
+  }
+}
+

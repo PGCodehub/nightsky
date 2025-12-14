@@ -4,10 +4,10 @@ from pydantic import BaseModel, ValidationError, Field
 import logging
 from concurrent.futures import ThreadPoolExecutor
 import time
-import asyncio
-from sse_manager import push_update
 import json
 from datetime import date, datetime
+import asyncio
+from sse_manager import push_update
 
 class ExecutionError(Exception):
     pass
@@ -115,6 +115,10 @@ class AgenticGraph:
         self.agent_schemas: Dict[str, Type[BaseModel]] = {}
         self.node_graph_state: Dict[str, Dict[str, Any]] = {self.chat_id: {}}
         self.current_execution_id: Optional[str] = None
+
+        ##SSE 
+        self.sse_queue = asyncio.Queue()
+        self.sse_task = None
 
         ##SSE 
         self.sse_queue = asyncio.Queue()
@@ -323,6 +327,18 @@ class AgenticGraph:
                     return False
         return True
 
+    # def create_agent_message(self, metahistory: Any, agent_id: str) -> Dict[str, Any]:
+    #     schema = self.agent_schemas.get(agent_id, self.agent_schema_type)
+    #     try:
+    #         if isinstance(metahistory, self.metahistory_type):
+    #             agent_message = schema(**metahistory.dict(exclude={'create_agent_msg', 'node_index'}))
+    #         else:
+    #             agent_message = schema(**{k: v for k, v in metahistory.items() if k not in {'create_agent_msg', 'node_index'}})
+    #         return agent_message.dict(exclude_unset=True)
+    #     except ValidationError as e:
+    #         logging.warning(f"Validation error for agent {agent_id}: {e}")
+    #         return {"role": getattr(metahistory, 'role', 'unknown'), "content": getattr(metahistory, 'content', '')}
+
     async def execute_node(self, node: Node, input_data: Dict[str, Any], max_retries: int = 1) -> Any:
         self.logger.info(f"Executing node '{node.name}' in graph '{self.graph_id}'")
         loop = asyncio.get_event_loop()
@@ -415,6 +431,11 @@ class AgenticGraph:
                                 self.agentic_memory[node.agent_id] = metahistory.agent_msgs
                             else:
                                 self.agentic_memory[node.agent_id] = []  # Clear the memory if no new messages
+                        if node.is_agent:
+                            if metahistory.agent_msgs is not None:
+                                self.agentic_memory[node.agent_id] = metahistory.agent_msgs
+                            else:
+                                self.agentic_memory[node.agent_id] = []  # Clear the memory if no new messages
 
                         self.metahistory[self.chat_id][0][entry_id] = metahistory
                         self.metahistory[self.chat_id][1].append(entry_id)
@@ -468,6 +489,13 @@ class AgenticGraph:
                     else:
                         tasks.append(asyncio.create_task(self.execute_branch(next_node)))
                 await asyncio.gather(*tasks)
+                tasks = []
+                for next_node, next_source_graph_id in next_nodes[:self.max_parallel]:
+                    if next_source_graph_id:
+                        tasks.append(asyncio.create_task(self.connected_graphs[next_source_graph_id].execute_branch(next_node, self.graph_id)))
+                    else:
+                        tasks.append(asyncio.create_task(self.execute_branch(next_node)))
+                await asyncio.gather(*tasks)
                 return
 
         if self.stop_execution:
@@ -510,6 +538,8 @@ class AgenticGraph:
             pass
 
         self.logger.info(f"Graph execution completed. Chat ID: {self.chat_id}, Execution ID: {self.current_execution_id}")
+
+        
 
     def stop_at_current_node(self):
         self.stop_execution = True
